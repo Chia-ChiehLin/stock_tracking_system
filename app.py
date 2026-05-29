@@ -43,8 +43,16 @@ st.markdown("""
 .hero p  {font-size: 17px; margin: 6px 0 0; opacity: .95;}
 .pricebox {border-radius: 12px; padding: 16px 18px; text-align: center;
            background: #f8fafc; border: 1px solid #e2e8f0;}
-.pricebox .label {font-size: 13px; color: #64748b; margin-bottom: 4px;}
-.pricebox .value {font-size: 24px; font-weight: 700;}
+.pricebox .label {font-size: 14px; color: #475569; margin-bottom: 4px; font-weight: 600;}
+.pricebox .value {font-size: 26px; font-weight: 800;}
+.pricebox .hint {font-size: 12px; color: #64748b; margin-top: 6px;}
+.action-box {background:#f0f9ff; border:1px solid #bae6fd; border-radius:14px;
+             padding:18px 22px; font-size:15.5px; line-height:1.7; color:#0f172a;}
+.action-title {font-size:19px; font-weight:800; margin-bottom:6px; color:#0369a1;}
+.action-list {margin:8px 0 8px 4px; padding-left:20px;}
+.action-list li {margin:5px 0;}
+.action-warn {background:#fff7ed; border-radius:10px; padding:10px 14px;
+              margin-top:12px; font-size:13.5px; color:#9a3412;}
 .green {color:#16a34a;} .red {color:#dc2626;} .slate {color:#334155;}
 .verdict {border-radius: 12px; padding: 14px 18px; font-size: 15px;
           margin-top: 8px;}
@@ -63,10 +71,11 @@ with st.sidebar:
     symbol = st.text_input("股票代號", value="AAPL",
                            help="輸入美股代號，例如 AAPL、TSLA、NVDA").upper().strip()
     timeframe = st.selectbox(
-        "K 棒粒度", ["1Min", "5Min", "15Min", "1Hour", "1Day"], index=1,
-        help="每根 K 棒代表多久。當沖常用 1~15 分鐘")
-    lookback = st.slider("回看天數", 1, 60, 5,
-                         help="抓取最近幾天的資料")
+        "K 棒粒度（每根 K 線代表多久）", ["1Min", "5Min", "15Min", "1Hour", "1Day"],
+        index=3,
+        help="建議用 1Hour，比 5 分鐘穩、雜訊少，也是系統驗證過較有優勢的設定")
+    lookback = st.slider("回看天數（抓最近幾天資料）", 1, 60, 30,
+                         help="天數越多，圖和回測越完整。1 小時線建議 30 天以上")
     trend_filter = st.checkbox(
         "啟用趨勢過濾", value=True,
         help="只順著長期均線方向交易，避免逆勢被巴。實測在 1 小時以上明顯提升勝率")
@@ -114,9 +123,9 @@ if using_optimized:
 hero_class = {"BUY": "hero-buy", "SELL": "hero-sell", "HOLD": "hero-hold"}[sig.action]
 action_zh = {"BUY": "建議買進 🟢", "SELL": "建議賣出 🔴", "HOLD": "建議觀望 ⚪"}[sig.action]
 action_desc = {
-    "BUY": "目前多項指標偏多，是相對有利的進場時機。",
-    "SELL": "目前多項指標偏空，宜減碼或放空（當沖）。",
-    "HOLD": "多空訊號不明確，建議先觀望、不要進場。",
+    "BUY": "多數指標看漲，現在是相對有利的買進時機。",
+    "SELL": "多數指標看跌，手上有的可考慮先賣、或不要買進。",
+    "HOLD": "方向不明，現在進場容易兩面挨打，建議先別動、再等等。",
 }[sig.action]
 
 st.markdown(f"""
@@ -130,34 +139,67 @@ st.markdown(f"""
 st.progress(sig.confidence / 100,
             text=f"訊號信心：{sig.confidence}/100（越高代表越多指標一致）")
 
-# ---------- 進場 / 停損 / 停利 ----------
+# ---------- 白話操作建議 ----------
 if sig.action in ("BUY", "SELL"):
     risk = abs(sig.price - sig.stop_loss)
     reward = abs(sig.take_profit - sig.price)
+    risk_pct = risk / sig.price * 100
+    reward_pct = reward / sig.price * 100
+    verb = "買進" if sig.action == "BUY" else "放空（看跌）"
+
+    st.markdown(f"""
+<div class="action-box">
+  <div class="action-title">👉 白話操作建議</div>
+  如果你決定<b>{verb} {symbol}</b>：
+  <ol class="action-list">
+    <li>現在大約用 <b>${sig.price:.2f}</b> 進場</li>
+    <li>進場後，先想好兩個出場點，到了就賣，不要猶豫：
+      <ul>
+        <li>🔴 到 <b>${sig.stop_loss:.2f}</b> → <b>認賠出場</b>（最多虧約 {risk_pct:.1f}%，避免越套越深）</li>
+        <li>🟢 到 <b>${sig.take_profit:.2f}</b> → <b>獲利了結</b>（賺約 {reward_pct:.1f}%）</li>
+      </ul>
+    </li>
+    <li>用意：<b>虧就虧小的、賺就賺大的</b>（這次設定賺的目標是虧損的 {params['risk_reward']:.0f} 倍）</li>
+  </ol>
+  <div class="action-warn">⚠️ 這不是叫你「一定要買」，而是「如果要做，建議這樣控制風險」。
+  請先用模擬倉練習，不要直接拿真錢。</div>
+</div>
+""", unsafe_allow_html=True)
+
+    st.write("")  # 間距
     c1, c2, c3 = st.columns(3)
-    c1.markdown(f"""<div class="pricebox"><div class="label">建議進場價</div>
-                <div class="value slate">${sig.price:.2f}</div></div>""",
-                unsafe_allow_html=True)
-    c2.markdown(f"""<div class="pricebox"><div class="label">停損價（虧損出場）</div>
-                <div class="value red">${sig.stop_loss:.2f}</div></div>""",
-                unsafe_allow_html=True)
-    c3.markdown(f"""<div class="pricebox"><div class="label">停利價（獲利出場）</div>
-                <div class="value green">${sig.take_profit:.2f}</div></div>""",
-                unsafe_allow_html=True)
-    st.caption(
-        f"💡 風險報酬比約 1:{params['risk_reward']:.0f}"
-        f"（願意冒 ${risk:.2f} 風險，目標賺 ${reward:.2f}）。"
-        f" 停損停利依當前波動度 ATR=${sig.atr:.2f} 自動計算。"
-    )
+    c1.markdown(f"""<div class="pricebox"><div class="label">① 進場價</div>
+                <div class="value slate">${sig.price:.2f}</div>
+                <div class="hint">用這個價位買進</div></div>""", unsafe_allow_html=True)
+    c2.markdown(f"""<div class="pricebox"><div class="label">② 停損價</div>
+                <div class="value red">${sig.stop_loss:.2f}</div>
+                <div class="hint">跌到這裡就賣，止住虧損</div></div>""", unsafe_allow_html=True)
+    c3.markdown(f"""<div class="pricebox"><div class="label">③ 停利價</div>
+                <div class="value green">${sig.take_profit:.2f}</div>
+                <div class="hint">漲到這裡就賣，獲利入袋</div></div>""", unsafe_allow_html=True)
 else:
-    st.info("目前為觀望訊號，暫不提供進場價位。等出現明確的買進或賣出訊號再行動。")
+    st.info("⚪ **現在建議「先別動」**：多空方向不明確，這時候進場容易兩面挨打。"
+            "等系統出現明確的綠色（買進）或紅色（賣出）訊號，再考慮行動。")
 
 # ---------- 訊號理由 ----------
-with st.expander("📋 為什麼是這個建議？（點開看理由）", expanded=True):
+with st.expander("📋 為什麼給這個建議？（用白話說）", expanded=True):
+    st.caption("系統同時看 4 個面向，多數同方向才會出訊號。目前的判斷依據：")
     for r in sig.reasons:
         st.markdown(f"- {r}")
-    st.caption("訊號由 4 個技術指標投票決定：EMA 快慢線、價格相對 VWAP、"
-               "RSI 超買超賣、MACD 動能。淨票數達標才出買/賣訊號。")
+
+# ---------- 新手名詞解釋 ----------
+with st.expander("🔰 新手必看：這些是什麼意思？"):
+    st.markdown("""
+- **建議買進/賣出/觀望**：系統綜合判斷後給的方向。買進=看漲、賣出=看跌、觀望=先別動。
+- **訊號信心 (0~100)**：幾個指標一起同意這個方向。越高代表越多指標看法一致，但**信心高 ≠ 一定會準**。
+- **進場價**：現在的股價，大約用這個價位買。
+- **停損價**：如果買了之後跌到這裡，就認賠賣掉，避免越賠越多。這是保護你的「安全帶」。
+- **停利價**：如果漲到這裡，就賣掉把獲利落袋。
+- **回測**：把這套規則套到過去的歷史資料，看「如果照做」會賺還是賠。**過去賺不代表未來會賺。**
+- **K 棒粒度**：每根 K 線代表多久。建議用「**1Hour（1 小時）**」，比 5 分鐘穩、雜訊少。
+""")
+    st.warning("最重要：本系統是**輔助參考**，不是「跟著做就會賺」。"
+               "務必先用 Alpaca 模擬倉（假錢）練習驗證，再考慮真錢。")
 
 st.divider()
 
