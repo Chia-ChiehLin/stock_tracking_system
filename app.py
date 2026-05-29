@@ -30,40 +30,87 @@ if _APP_PASSWORD:
             st.error("密碼錯誤")
         st.stop()
 
-# ---------- 樣式 ----------
+# ---------- 樣式（深色科技風）----------
 st.markdown("""
 <style>
-.block-container {padding-top: 2rem; max-width: 1200px;}
-.hero {border-radius: 16px; padding: 28px 32px; margin-bottom: 8px;
-       color: white; box-shadow: 0 4px 20px rgba(0,0,0,0.12);}
-.hero-buy  {background: linear-gradient(135deg,#16a34a,#22c55e);}
-.hero-sell {background: linear-gradient(135deg,#dc2626,#ef4444);}
-.hero-hold {background: linear-gradient(135deg,#6b7280,#9ca3af);}
-.hero h1 {font-size: 44px; margin: 0; font-weight: 800;}
-.hero p  {font-size: 17px; margin: 6px 0 0; opacity: .95;}
-.pricebox {border-radius: 12px; padding: 16px 18px; text-align: center;
-           background: #f8fafc; border: 1px solid #e2e8f0;}
-.pricebox .label {font-size: 14px; color: #475569; margin-bottom: 4px; font-weight: 600;}
-.pricebox .value {font-size: 26px; font-weight: 800;}
-.pricebox .hint {font-size: 12px; color: #64748b; margin-top: 6px;}
-.action-box {background:#f0f9ff; border:1px solid #bae6fd; border-radius:14px;
-             padding:18px 22px; font-size:15.5px; line-height:1.7; color:#0f172a;}
-.action-title {font-size:19px; font-weight:800; margin-bottom:6px; color:#0369a1;}
-.action-list {margin:8px 0 8px 4px; padding-left:20px;}
-.action-list li {margin:5px 0;}
-.action-warn {background:#fff7ed; border-radius:10px; padding:10px 14px;
-              margin-top:12px; font-size:13.5px; color:#9a3412;}
-.green {color:#16a34a;} .red {color:#dc2626;} .slate {color:#334155;}
-.verdict {border-radius: 12px; padding: 14px 18px; font-size: 15px;
-          margin-top: 8px;}
-.verdict-good {background:#dcfce7; color:#166534;}
-.verdict-bad  {background:#fee2e2; color:#991b1b;}
-.verdict-mid  {background:#fef9c3; color:#854d0e;}
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Orbitron:wght@600;800&display=swap');
+
+:root{
+  --bg:#0a0e1a; --panel:rgba(20,28,48,.6); --border:rgba(80,120,200,.22);
+  --cyan:#22d3ee; --green:#34f5a0; --red:#ff5c7a; --txt:#e6edf7; --muted:#8aa0c0;
+}
+.stApp{
+  background:
+    radial-gradient(900px 500px at 85% -8%, rgba(34,211,238,.10), transparent 60%),
+    radial-gradient(800px 500px at 5% 110%, rgba(52,245,160,.07), transparent 55%),
+    #0a0e1a;
+}
+.block-container{padding-top:2.2rem; max-width:1180px;
+  font-family:'Space Grotesk', -apple-system, "PingFang TC", sans-serif;}
+
+/* 標題：霓虹漸層 */
+.app-title{font-family:'Orbitron','Space Grotesk',sans-serif; font-weight:800;
+  font-size:40px; letter-spacing:1px; margin:0 0 2px;
+  background:linear-gradient(90deg,#22d3ee,#34f5a0 60%,#a78bfa);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;}
+.app-sub{color:var(--muted); font-size:13.5px; margin-bottom:14px;}
+
+/* Hero 主建議卡：玻璃 + 霓虹外光 */
+.hero{position:relative; border-radius:18px; padding:30px 34px; margin:6px 0 4px;
+  color:#fff; background:var(--panel); backdrop-filter:blur(14px);
+  border:1px solid var(--border); overflow:hidden;}
+.hero::before{content:""; position:absolute; inset:0; border-radius:18px; padding:1px;
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude;}
+.hero h1{font-family:'Orbitron',sans-serif; font-size:40px; margin:0; font-weight:800;}
+.hero p{font-size:16px; margin:8px 0 0; color:#cfe0f5;}
+.hero-buy { box-shadow:0 0 0 1px rgba(52,245,160,.5), 0 0 40px rgba(52,245,160,.25);
+  background:linear-gradient(135deg,rgba(16,185,129,.30),rgba(20,28,48,.6));}
+.hero-buy::before{background:linear-gradient(135deg,#34f5a0,transparent);}
+.hero-sell{ box-shadow:0 0 0 1px rgba(255,92,122,.5), 0 0 40px rgba(255,92,122,.22);
+  background:linear-gradient(135deg,rgba(239,68,68,.28),rgba(20,28,48,.6));}
+.hero-sell::before{background:linear-gradient(135deg,#ff5c7a,transparent);}
+.hero-hold{ box-shadow:0 0 0 1px rgba(34,211,238,.35), 0 0 36px rgba(34,211,238,.16);
+  background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(20,28,48,.6));}
+.hero-hold::before{background:linear-gradient(135deg,#22d3ee,transparent);}
+
+/* 價位卡：玻璃擬態 + 左側霓虹條 */
+.pricebox{position:relative; border-radius:14px; padding:16px 18px; text-align:center;
+  background:var(--panel); border:1px solid var(--border); backdrop-filter:blur(10px);}
+.pricebox .label{font-size:13.5px; color:var(--muted); margin-bottom:4px; font-weight:600;
+  letter-spacing:.5px;}
+.pricebox .value{font-family:'Orbitron',sans-serif; font-size:26px; font-weight:800;}
+.pricebox .hint{font-size:11.5px; color:var(--muted); margin-top:6px;}
+
+/* 操作建議框 */
+.action-box{background:var(--panel); border:1px solid var(--border); border-radius:16px;
+  padding:18px 22px; font-size:15px; line-height:1.75; color:var(--txt);
+  backdrop-filter:blur(10px); box-shadow:0 0 30px rgba(34,211,238,.07);}
+.action-title{font-family:'Orbitron',sans-serif; font-size:18px; font-weight:700;
+  margin-bottom:6px; color:var(--cyan);}
+.action-list{margin:8px 0 8px 4px; padding-left:20px;}
+.action-list li{margin:5px 0;}
+.action-warn{background:rgba(255,168,76,.10); border:1px solid rgba(255,168,76,.25);
+  border-radius:10px; padding:10px 14px; margin-top:12px; font-size:13px; color:#ffc98a;}
+
+.green{color:var(--green);} .red{color:var(--red);} .slate{color:var(--cyan);}
+.verdict{border-radius:12px; padding:14px 18px; font-size:14.5px; margin-top:8px;
+  border:1px solid var(--border); backdrop-filter:blur(8px);}
+.verdict-good{background:rgba(52,245,160,.10); color:#7af5c0;}
+.verdict-bad {background:rgba(255,92,122,.10); color:#ff9db0;}
+.verdict-mid {background:rgba(250,204,21,.10); color:#fde68a;}
+
+/* 進度條 / 指標數字 上色 */
+.stProgress > div > div > div{background:linear-gradient(90deg,#22d3ee,#34f5a0)!important;}
+[data-testid="stMetricValue"]{font-family:'Orbitron',sans-serif;}
+section[data-testid="stSidebar"]{background:rgba(13,19,34,.85); border-right:1px solid var(--border);}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📈 美股當沖訊號系統")
-st.caption("僅供決策輔助，非投資建議。當沖風險極高，請務必先用模擬倉（Paper Trading）長期驗證再碰真錢。")
+st.markdown('<div class="app-title">⚡ STOCK SIGNAL TERMINAL</div>'
+            '<div class="app-sub">美股訊號系統｜僅供決策輔助，非投資建議。'
+            '當沖風險極高，請務必先用模擬倉（Paper Trading）長期驗證再碰真錢。</div>',
+            unsafe_allow_html=True)
 
 # ---------- 側欄 ----------
 with st.sidebar:
@@ -213,7 +260,7 @@ fig = make_subplots(
 fig.add_trace(go.Candlestick(
     x=enriched.index, open=enriched["open"], high=enriched["high"],
     low=enriched["low"], close=enriched["close"], name="K線",
-    increasing_line_color="#22c55e", decreasing_line_color="#ef4444"),
+    increasing_line_color="#34f5a0", decreasing_line_color="#ff5c7a"),
     row=1, col=1)
 fig.add_trace(go.Scatter(x=enriched.index, y=enriched["ema_fast"],
                          name="EMA快(9)", line=dict(width=1.2, color="#3b82f6")), row=1, col=1)
@@ -241,9 +288,14 @@ fig.add_hline(y=params["rsi_oversold"],
               line_dash="dot", line_color="#22c55e", row=2, col=1)
 fig.update_layout(height=620, xaxis_rangeslider_visible=False,
                   margin=dict(t=40, b=20, l=10, r=10),
+                  template="plotly_dark",
+                  paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(10,14,26,0.3)",
+                  font=dict(color="#cfe0f5"),
                   legend=dict(orientation="h", yanchor="bottom", y=1.02,
                               xanchor="right", x=1),
                   hovermode="x unified")
+fig.update_xaxes(gridcolor="rgba(120,150,200,0.12)", zeroline=False)
+fig.update_yaxes(gridcolor="rgba(120,150,200,0.12)", zeroline=False)
 st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
