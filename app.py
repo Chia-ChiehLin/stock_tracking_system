@@ -41,7 +41,7 @@ st.markdown("""
   --txt:#e6e9ef; --muted:#8b95a5;
 }
 .stApp{background:#0d1117;}
-.block-container{padding-top:1.4rem; padding-bottom:2rem; max-width:1080px;
+.block-container{padding-top:2.6rem; padding-bottom:2rem; max-width:1080px;
   font-family:'Inter', -apple-system, "PingFang TC", sans-serif; font-size:14px;}
 hr{margin:0.8rem 0 !important; border-color:var(--border) !important;}
 
@@ -242,9 +242,8 @@ st.divider()
 # ---------- 走勢圖 ----------
 st.subheader(f"📊 {symbol} 走勢與指標")
 fig = make_subplots(
-    rows=2, cols=1, shared_xaxes=True, row_heights=[0.72, 0.28],
-    vertical_spacing=0.04,
-    subplot_titles=("價格 / EMA / VWAP", "RSI（超買超賣）"),
+    rows=2, cols=1, shared_xaxes=True, row_heights=[0.74, 0.26],
+    vertical_spacing=0.06,
 )
 fig.add_trace(go.Candlestick(
     x=enriched.index, open=enriched["open"], high=enriched["high"],
@@ -275,16 +274,19 @@ fig.add_hline(y=params["rsi_overbought"],
               line_dash="dot", line_color="#ef4444", row=2, col=1)
 fig.add_hline(y=params["rsi_oversold"],
               line_dash="dot", line_color="#22c55e", row=2, col=1)
-fig.update_layout(height=440, xaxis_rangeslider_visible=False,
-                  margin=dict(t=30, b=10, l=10, r=10),
+fig.update_layout(height=460, xaxis_rangeslider_visible=False,
+                  margin=dict(t=54, b=10, l=10, r=10),
                   template="plotly_dark",
-                  paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(10,14,26,0.3)",
-                  font=dict(color="#cfe0f5"),
-                  legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                              xanchor="right", x=1),
+                  paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(13,17,23,0.4)",
+                  font=dict(color="#cfe0f5", size=11),
+                  legend=dict(orientation="h", yanchor="bottom", y=1.04,
+                              xanchor="center", x=0.5, font=dict(size=11),
+                              bgcolor="rgba(0,0,0,0)"),
                   hovermode="x unified")
-fig.update_xaxes(gridcolor="rgba(120,150,200,0.12)", zeroline=False)
-fig.update_yaxes(gridcolor="rgba(120,150,200,0.12)", zeroline=False)
+fig.update_yaxes(title_text="價格", row=1, col=1, title_font=dict(size=11))
+fig.update_yaxes(title_text="RSI", row=2, col=1, title_font=dict(size=11))
+fig.update_xaxes(gridcolor="rgba(120,150,200,0.10)", zeroline=False)
+fig.update_yaxes(gridcolor="rgba(120,150,200,0.10)", zeroline=False)
 st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
