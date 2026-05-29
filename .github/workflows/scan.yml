@@ -1,0 +1,30 @@
+name: 盤中訊號掃描
+
+# 美股盤中自動掃描關注清單，出現訊號就推播 Telegram。
+# 時間為 UTC：美股 9:30-16:00 ET 約等於 13:30-21:00 UTC（已涵蓋夏令/冬令時間）。
+on:
+  schedule:
+    - cron: "*/15 13-21 * * 1-5"   # 週一到週五、每 15 分鐘
+  workflow_dispatch:                 # 也可在 GitHub 網頁手動觸發測試
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安裝套件
+        run: pip install -r requirements.txt
+
+      - name: 執行掃描
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scan.py --timeframe 1Hour
