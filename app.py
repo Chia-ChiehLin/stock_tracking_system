@@ -30,86 +30,79 @@ if _APP_PASSWORD:
             st.error("密碼錯誤")
         st.stop()
 
-# ---------- 樣式（深色科技風）----------
+# ---------- 樣式（簡約優雅・深色科技風）----------
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Orbitron:wght@600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root{
-  --bg:#0a0e1a; --panel:rgba(20,28,48,.6); --border:rgba(80,120,200,.22);
-  --cyan:#22d3ee; --green:#34f5a0; --red:#ff5c7a; --txt:#e6edf7; --muted:#8aa0c0;
+  --bg:#0d1117; --panel:#161b22; --border:#262d38;
+  --accent:#5eead4; --green:#4ade80; --red:#f87171; --hold:#94a3b8;
+  --txt:#e6e9ef; --muted:#8b95a5;
 }
-.stApp{
-  background:
-    radial-gradient(900px 500px at 85% -8%, rgba(34,211,238,.10), transparent 60%),
-    radial-gradient(800px 500px at 5% 110%, rgba(52,245,160,.07), transparent 55%),
-    #0a0e1a;
-}
-.block-container{padding-top:2.2rem; max-width:1180px;
-  font-family:'Space Grotesk', -apple-system, "PingFang TC", sans-serif;}
+.stApp{background:#0d1117;}
+.block-container{padding-top:1.4rem; padding-bottom:2rem; max-width:1080px;
+  font-family:'Inter', -apple-system, "PingFang TC", sans-serif; font-size:14px;}
+hr{margin:0.8rem 0 !important; border-color:var(--border) !important;}
 
-/* 標題：霓虹漸層 */
-.app-title{font-family:'Orbitron','Space Grotesk',sans-serif; font-weight:800;
-  font-size:40px; letter-spacing:1px; margin:0 0 2px;
-  background:linear-gradient(90deg,#22d3ee,#34f5a0 60%,#a78bfa);
-  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;}
-.app-sub{color:var(--muted); font-size:13.5px; margin-bottom:14px;}
+/* 標題：簡潔單色 + 細字距 */
+.app-title{font-weight:700; font-size:22px; letter-spacing:2px; margin:0;
+  color:var(--txt);}
+.app-title .dot{color:var(--accent);}
+.app-sub{color:var(--muted); font-size:12px; margin:2px 0 12px;}
 
-/* Hero 主建議卡：玻璃 + 霓虹外光 */
-.hero{position:relative; border-radius:18px; padding:30px 34px; margin:6px 0 4px;
-  color:#fff; background:var(--panel); backdrop-filter:blur(14px);
-  border:1px solid var(--border); overflow:hidden;}
-.hero::before{content:""; position:absolute; inset:0; border-radius:18px; padding:1px;
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-  -webkit-mask-composite:xor; mask-composite:exclude;}
-.hero h1{font-family:'Orbitron',sans-serif; font-size:40px; margin:0; font-weight:800;}
-.hero p{font-size:16px; margin:8px 0 0; color:#cfe0f5;}
-.hero-buy { box-shadow:0 0 0 1px rgba(52,245,160,.5), 0 0 40px rgba(52,245,160,.25);
-  background:linear-gradient(135deg,rgba(16,185,129,.30),rgba(20,28,48,.6));}
-.hero-buy::before{background:linear-gradient(135deg,#34f5a0,transparent);}
-.hero-sell{ box-shadow:0 0 0 1px rgba(255,92,122,.5), 0 0 40px rgba(255,92,122,.22);
-  background:linear-gradient(135deg,rgba(239,68,68,.28),rgba(20,28,48,.6));}
-.hero-sell::before{background:linear-gradient(135deg,#ff5c7a,transparent);}
-.hero-hold{ box-shadow:0 0 0 1px rgba(34,211,238,.35), 0 0 36px rgba(34,211,238,.16);
-  background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(20,28,48,.6));}
-.hero-hold::before{background:linear-gradient(135deg,#22d3ee,transparent);}
+/* Hero 主建議卡：低調、緊湊、單色細邊 */
+.hero{border-radius:12px; padding:16px 22px; margin:0 0 4px; color:var(--txt);
+  background:var(--panel); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;}
+.hero .left{display:flex; align-items:baseline; gap:14px;}
+.hero h1{font-size:26px; margin:0; font-weight:700; letter-spacing:.5px;}
+.hero .tag{font-size:18px; font-weight:600;}
+.hero p{font-size:13px; margin:0; color:var(--muted);}
+.hero .meta{font-size:12.5px; color:var(--muted); text-align:right; white-space:nowrap;}
+.hero .meta b{color:var(--txt); font-size:15px;}
+.hero-buy {border-left:3px solid var(--green);}
+.hero-buy .tag{color:var(--green);}
+.hero-sell{border-left:3px solid var(--red);}
+.hero-sell .tag{color:var(--red);}
+.hero-hold{border-left:3px solid var(--hold);}
+.hero-hold .tag{color:var(--hold);}
 
-/* 價位卡：玻璃擬態 + 左側霓虹條 */
-.pricebox{position:relative; border-radius:14px; padding:16px 18px; text-align:center;
-  background:var(--panel); border:1px solid var(--border); backdrop-filter:blur(10px);}
-.pricebox .label{font-size:13.5px; color:var(--muted); margin-bottom:4px; font-weight:600;
-  letter-spacing:.5px;}
-.pricebox .value{font-family:'Orbitron',sans-serif; font-size:26px; font-weight:800;}
-.pricebox .hint{font-size:11.5px; color:var(--muted); margin-top:6px;}
+/* 價位卡：簡約 */
+.pricebox{border-radius:10px; padding:11px 14px; text-align:center;
+  background:var(--panel); border:1px solid var(--border);}
+.pricebox .label{font-size:12px; color:var(--muted); margin-bottom:2px; font-weight:500;}
+.pricebox .value{font-size:21px; font-weight:700;}
+.pricebox .hint{font-size:10.5px; color:var(--muted); margin-top:2px;}
 
 /* 操作建議框 */
-.action-box{background:var(--panel); border:1px solid var(--border); border-radius:16px;
-  padding:18px 22px; font-size:15px; line-height:1.75; color:var(--txt);
-  backdrop-filter:blur(10px); box-shadow:0 0 30px rgba(34,211,238,.07);}
-.action-title{font-family:'Orbitron',sans-serif; font-size:18px; font-weight:700;
-  margin-bottom:6px; color:var(--cyan);}
-.action-list{margin:8px 0 8px 4px; padding-left:20px;}
-.action-list li{margin:5px 0;}
-.action-warn{background:rgba(255,168,76,.10); border:1px solid rgba(255,168,76,.25);
-  border-radius:10px; padding:10px 14px; margin-top:12px; font-size:13px; color:#ffc98a;}
+.action-box{background:var(--panel); border:1px solid var(--border); border-radius:12px;
+  padding:12px 18px; font-size:13.5px; line-height:1.55; color:var(--txt);}
+.action-title{font-size:14px; font-weight:700; margin-bottom:2px; color:var(--accent);}
+.action-list{margin:4px 0 4px 2px; padding-left:18px;}
+.action-list li{margin:2px 0;}
+.action-list ul{margin:2px 0;}
+.action-warn{color:var(--muted); font-size:11.5px; margin-top:6px;}
 
-.green{color:var(--green);} .red{color:var(--red);} .slate{color:var(--cyan);}
-.verdict{border-radius:12px; padding:14px 18px; font-size:14.5px; margin-top:8px;
-  border:1px solid var(--border); backdrop-filter:blur(8px);}
-.verdict-good{background:rgba(52,245,160,.10); color:#7af5c0;}
-.verdict-bad {background:rgba(255,92,122,.10); color:#ff9db0;}
-.verdict-mid {background:rgba(250,204,21,.10); color:#fde68a;}
+.green{color:var(--green);} .red{color:var(--red);} .slate{color:var(--accent);}
+.verdict{border-radius:10px; padding:10px 14px; font-size:13px; margin-top:6px;
+  border:1px solid var(--border);}
+.verdict-good{background:rgba(74,222,128,.08); color:#86efac;}
+.verdict-bad {background:rgba(248,113,113,.08); color:#fca5a5;}
+.verdict-mid {background:rgba(250,204,21,.08); color:#fde68a;}
 
-/* 進度條 / 指標數字 上色 */
-.stProgress > div > div > div{background:linear-gradient(90deg,#22d3ee,#34f5a0)!important;}
-[data-testid="stMetricValue"]{font-family:'Orbitron',sans-serif;}
-section[data-testid="stSidebar"]{background:rgba(13,19,34,.85); border-right:1px solid var(--border);}
+/* 元件微調 */
+.stProgress > div > div > div{background:var(--accent)!important;}
+.stProgress{margin-top:-6px;}
+section[data-testid="stSidebar"]{background:#0b0f15; border-right:1px solid var(--border);}
+[data-testid="stExpander"]{border-color:var(--border)!important;}
+h3{font-size:16px !important; margin-bottom:2px !important;}
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="app-title">⚡ STOCK SIGNAL TERMINAL</div>'
+st.markdown('<div class="app-title"><span class="dot">⬢</span> STOCK SIGNAL</div>'
             '<div class="app-sub">美股訊號系統｜僅供決策輔助，非投資建議。'
-            '當沖風險極高，請務必先用模擬倉（Paper Trading）長期驗證再碰真錢。</div>',
+            '當沖風險極高，請先用模擬倉（Paper Trading）驗證再碰真錢。</div>',
             unsafe_allow_html=True)
 
 # ---------- 側欄 ----------
@@ -168,23 +161,20 @@ if using_optimized:
 
 # ---------- 主建議卡 ----------
 hero_class = {"BUY": "hero-buy", "SELL": "hero-sell", "HOLD": "hero-hold"}[sig.action]
-action_zh = {"BUY": "建議買進 🟢", "SELL": "建議賣出 🔴", "HOLD": "建議觀望 ⚪"}[sig.action]
+action_tag = {"BUY": "▲ 建議買進", "SELL": "▼ 建議賣出", "HOLD": "● 建議觀望"}[sig.action]
 action_desc = {
-    "BUY": "多數指標看漲，現在是相對有利的買進時機。",
+    "BUY": "多數指標看漲，相對有利的買進時機。",
     "SELL": "多數指標看跌，手上有的可考慮先賣、或不要買進。",
-    "HOLD": "方向不明，現在進場容易兩面挨打，建議先別動、再等等。",
+    "HOLD": "方向不明，現在進場容易兩面挨打，建議先別動。",
 }[sig.action]
 
 st.markdown(f"""
 <div class="hero {hero_class}">
-  <h1>{symbol}　{action_zh}</h1>
-  <p>{action_desc}　現價 ${sig.price:.2f}　|　訊號信心 {sig.confidence}/100</p>
+  <div class="left"><h1>{symbol}</h1><span class="tag">{action_tag}</span></div>
+  <div class="meta">現價 <b>${sig.price:.2f}</b>　｜　信心 <b>{sig.confidence}</b>/100</div>
 </div>
+<div style="color:#8b95a5;font-size:12.5px;margin:5px 2px 8px;">{action_desc}</div>
 """, unsafe_allow_html=True)
-
-# 信心度進度條
-st.progress(sig.confidence / 100,
-            text=f"訊號信心：{sig.confidence}/100（越高代表越多指標一致）")
 
 # ---------- 白話操作建議 ----------
 if sig.action in ("BUY", "SELL"):
@@ -213,7 +203,6 @@ if sig.action in ("BUY", "SELL"):
 </div>
 """, unsafe_allow_html=True)
 
-    st.write("")  # 間距
     c1, c2, c3 = st.columns(3)
     c1.markdown(f"""<div class="pricebox"><div class="label">① 進場價</div>
                 <div class="value slate">${sig.price:.2f}</div>
@@ -286,8 +275,8 @@ fig.add_hline(y=params["rsi_overbought"],
               line_dash="dot", line_color="#ef4444", row=2, col=1)
 fig.add_hline(y=params["rsi_oversold"],
               line_dash="dot", line_color="#22c55e", row=2, col=1)
-fig.update_layout(height=620, xaxis_rangeslider_visible=False,
-                  margin=dict(t=40, b=20, l=10, r=10),
+fig.update_layout(height=440, xaxis_rangeslider_visible=False,
+                  margin=dict(t=30, b=10, l=10, r=10),
                   template="plotly_dark",
                   paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(10,14,26,0.3)",
                   font=dict(color="#cfe0f5"),
