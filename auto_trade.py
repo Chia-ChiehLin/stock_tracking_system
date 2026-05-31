@@ -18,9 +18,37 @@ import argparse
 
 from config import settings
 from src.stocktracker.data import alpaca_client, universe
+from src.stocktracker.indicators import technical
 from src.stocktracker.notify import telegram
 from src.stocktracker.signals import strategy
 from src.stocktracker.trade import alpaca_trader
+
+
+def _trend_exit_pass(dry_run: bool) -> None:
+    """對現有持倉做趨勢出場：價格跌破長期均線就賣出（讓獲利的單之前能一直抱）。"""
+    positions = alpaca_trader.list_positions()
+    if not positions:
+        return
+    symbols = [s for s, _ in positions]
+    bars = alpaca_client.get_bars_multi(
+        symbols, timeframe=settings.AUTO_TRADE_TIMEFRAME, lookback_days=60)
+    for sym, qty in positions:
+        df = bars.get(sym)
+        if df is None or df.empty:
+            continue
+        trend = technical.ema(df["close"], settings.STRATEGY_PARAMS.get("trend_ema", 50))
+        last_close = float(df["close"].iloc[-1])
+        last_trend = float(trend.iloc[-1])
+        if last_close < last_trend:   # 趨勢轉弱 → 出場
+            if dry_run:
+                print(f"  [試算] 趨勢轉弱，賣出 {sym} {qty} 股 @ {last_close:.2f}")
+                continue
+            try:
+                alpaca_trader.close_position(sym)
+                telegram.send_message(
+                    f"📉 趨勢轉弱，自動賣出 <b>{sym}</b> {qty} 股 @ ~${last_close:.2f}")
+            except Exception as exc:
+                print(f"  {sym} 出場失敗：{exc}")
 
 
 def _candidate_symbols() -> list[str]:
@@ -50,6 +78,9 @@ def run(dry_run: bool = False) -> None:
     if acc.equity <= 0:
         msg = "⚠️ 模擬倉資金為 $0，無法下單。請先到 Alpaca 重置帳戶資金。"
         print(msg); telegram.send_message(msg); return
+
+    # 先做趨勢出場（賣掉趨勢轉弱的持倉，騰出名額）
+    _trend_exit_pass(dry_run)
 
     held = alpaca_trader.held_symbols()
     pending = alpaca_trader.open_order_symbols()
@@ -92,12 +123,12 @@ def run(dry_run: bool = False) -> None:
 
         if dry_run:
             print(f"  [試算] 買 {sym} {qty} 股 @ {sig.price:.2f}（信心 {sig.confidence}）"
-                  f" 停損 {sig.stop_loss:.2f} 停利 {sig.take_profit:.2f}")
+                  f" 初始停損 {sig.stop_loss:.2f}（讓獲利跑）")
             placed += 1
             continue
 
         try:
-            alpaca_trader.open_long_bracket(sym, qty, sig.stop_loss, sig.take_profit)
+            alpaca_trader.open_long_oto_stop(sym, qty, sig.stop_loss)
         except Exception as order_exc:
             err = f"⚠️ {sym} 自動下單失敗：{order_exc}"
             print(f"  {err}"); telegram.send_message(err)
@@ -105,7 +136,7 @@ def run(dry_run: bool = False) -> None:
 
         placed += 1
         note = (f"🤖 自動買進 <b>{sym}</b> {qty} 股 @ ~${sig.price:.2f}\n"
-                f"停損 ${sig.stop_loss:.2f}｜停利 ${sig.take_profit:.2f}\n"
+                f"初始停損 ${sig.stop_loss:.2f}（之後讓獲利跑，跌破趨勢才賣）\n"
                 f"（模擬倉・信心 {sig.confidence}/100）")
         print(f"  已下單 {sym}：{qty} 股")
         telegram.send_message(note)

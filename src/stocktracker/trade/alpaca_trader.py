@@ -76,6 +76,51 @@ def open_long_bracket(symbol: str, qty: int, stop_loss: float,
     return _client().submit_order(order_data=order)
 
 
+def open_long_oto_stop(symbol: str, qty: int, stop_loss: float):
+    """市價買進 + 只掛初始停損（不設停利上限，讓獲利繼續跑）。
+
+    出場改由排程的「趨勢出場」邏輯處理（跌破長期均線才賣），
+    回測顯示這比固定停利大幅改善績效。
+    """
+    order = MarketOrderRequest(
+        symbol=symbol,
+        qty=qty,
+        side=OrderSide.BUY,
+        time_in_force=TimeInForce.DAY,
+        order_class=OrderClass.OTO,
+        stop_loss=StopLossRequest(stop_price=round(stop_loss, 2)),
+    )
+    return _client().submit_order(order_data=order)
+
+
+def list_positions() -> list[tuple[str, int]]:
+    """回傳 [(symbol, qty), ...]。"""
+    out = []
+    for p in _client().get_all_positions():
+        try:
+            out.append((p.symbol, int(float(p.qty))))
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
+def cancel_symbol_orders(symbol: str) -> None:
+    """取消某標的所有未成交掛單（出場前先清掉殘留的停損單）。"""
+    c = _client()
+    for o in c.get_orders(filter=GetOrdersRequest(status=QueryOrderStatus.OPEN)):
+        if o.symbol == symbol:
+            try:
+                c.cancel_order_by_id(o.id)
+            except Exception:
+                pass
+
+
+def close_position(symbol: str):
+    """平倉某標的（先取消殘留掛單，再市價賣出）。"""
+    cancel_symbol_orders(symbol)
+    return _client().close_position(symbol)
+
+
 if __name__ == "__main__":
     # 連線煙霧測試：python -m src.stocktracker.trade.alpaca_trader
     acc = get_account()

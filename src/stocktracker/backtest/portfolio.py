@@ -47,11 +47,15 @@ def run_portfolio_backtest(
     max_positions: int = 5,
     starting_cash: float = 100_000.0,
     slippage_pct: float = 0.05,
+    exit_mode: str = "bracket",      # "bracket"=固定停損停利；"trend"=讓獲利奔跑
+    trail_atr_mult: float = 3.0,     # trend 模式：移動停損 = 高點 - N×ATR
 ) -> PortfolioResult:
     """以日線（或任何單一粒度）模擬組合策略。
 
     Args:
         bars: {symbol: OHLCV DataFrame}，index 為時間。
+        exit_mode: "bracket" 固定停利停損；"trend" 跟著趨勢抱、用移動停損、
+                   跌破長期均線出場（讓賺錢的單繼續跑）。
     """
     slip = slippage_pct / 100.0
 
@@ -78,19 +82,33 @@ def run_portfolio_backtest(
     trade_returns: list[float] = []
 
     for d in all_dates:
-        # 2a) 先處理出場（用當日 high/low 判斷觸發停損或停利）
+        # 2a) 先處理出場
         for sym in list(positions.keys()):
             e = enriched[sym]
             if d not in e.index:
                 continue
             row = e.loc[d]
-            hi, lo = float(row["high"]), float(row["low"])
+            hi, lo, close = float(row["high"]), float(row["low"]), float(row["close"])
             pos = positions[sym]
             exit_price = None
-            if lo <= pos["stop"]:
-                exit_price = pos["stop"]
-            elif hi >= pos["target"]:
-                exit_price = pos["target"]
+
+            if exit_mode == "trend":
+                # 讓獲利奔跑：移動停損（高點回落）或跌破長期均線才出場，不設停利上限
+                pos["peak"] = max(pos["peak"], hi)
+                trail = pos["peak"] - trail_atr_mult * pos["atr"]
+                trail = max(trail, pos["stop"])  # 不低於初始停損
+                trend = row.get("trend_ema")
+                if lo <= trail:
+                    exit_price = trail
+                elif trend is not None and close < float(trend):
+                    exit_price = close
+            else:
+                # bracket：固定停損 / 停利
+                if lo <= pos["stop"]:
+                    exit_price = pos["stop"]
+                elif hi >= pos["target"]:
+                    exit_price = pos["target"]
+
             if exit_price is not None:
                 fill = exit_price * (1 - slip)
                 cash += pos["qty"] * fill
@@ -133,8 +151,8 @@ def run_portfolio_backtest(
             entry = price * (1 + slip)
             stop, target = strategy._risk_levels("BUY", entry, atr, params)
             cash -= qty * entry
-            positions[sym] = {"entry": entry, "qty": qty,
-                              "stop": stop, "target": target}
+            positions[sym] = {"entry": entry, "qty": qty, "stop": stop,
+                              "target": target, "atr": atr, "peak": entry}
 
     # 3) 收尾：以最後價格平倉所有持倉
     last_d = all_dates[-1]
