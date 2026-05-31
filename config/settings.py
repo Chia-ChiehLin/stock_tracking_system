@@ -13,6 +13,11 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 # 盤中掃描的關注清單
 WATCHLIST = ["AAPL", "TSLA", "NVDA", "MSFT", "AMD"]
 
+# 自動交易（模擬倉）設定
+AUTO_TRADE_TIMEFRAME = "1Hour"   # 自動交易依據的 K 棒粒度（用驗證過的 1 小時）
+POSITION_PCT = 0.10              # 每檔投入帳戶淨值的比例（0.10 = 10%）
+MAX_OPEN_POSITIONS = 5          # 同時最多持有幾檔，控制曝險
+
 # 當沖預設使用的分鐘線粒度
 DEFAULT_TIMEFRAME = "5Min"
 
