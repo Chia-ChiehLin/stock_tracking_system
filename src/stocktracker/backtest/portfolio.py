@@ -49,6 +49,10 @@ def run_portfolio_backtest(
     slippage_pct: float = 0.05,
     exit_mode: str = "bracket",      # "bracket"=固定停損停利；"trend"=讓獲利奔跑
     trail_atr_mult: float = 3.0,     # trend 模式：移動停損 = 高點 - N×ATR
+    regime_ok: "pd.Series | None" = None,  # 大盤趨勢過濾：False 的日子不進場
+    liquidate_on_regime_off: bool = False,  # 大盤轉空時是否全部出清（避崩盤）
+    rank_by: str = "confidence",     # 候選排名："confidence" 或 "momentum"
+    mom_window: int = 20,            # momentum 排名用的回看根數
 ) -> PortfolioResult:
     """以日線（或任何單一粒度）模擬組合策略。
 
@@ -69,9 +73,18 @@ def run_portfolio_backtest(
         except Exception:
             continue
         if not e.empty:
+            e["mom"] = e["close"].pct_change(mom_window)
             enriched[sym] = e
     if not enriched:
         raise ValueError("沒有足夠資料可回測")
+
+    def _regime_ok(d) -> bool:
+        if regime_ok is None:
+            return True
+        try:
+            return bool(regime_ok.asof(d))
+        except Exception:
+            return True
 
     # 2) 所有交易日（聯集、排序）
     all_dates = sorted(set().union(*[set(e.index) for e in enriched.values()]))
@@ -127,9 +140,21 @@ def run_portfolio_backtest(
         equity = cash + holdings_value
         equity_points.append((d, equity))
 
-        # 2c) 進場：補滿可用名額，挑「當日買進訊號、信心最高」的
+        # 大盤趨勢過濾：轉空時可選擇全部出清、且不進場
+        market_up = _regime_ok(d)
+        if not market_up and liquidate_on_regime_off:
+            for sym in list(positions.keys()):
+                e = enriched[sym]
+                px = float(e.loc[d, "close"]) if d in e.index else positions[sym]["entry"]
+                fill = px * (1 - slip)
+                cash += positions[sym]["qty"] * fill
+                trade_returns.append(((fill - positions[sym]["entry"])
+                                      / positions[sym]["entry"]) * 100)
+                del positions[sym]
+
+        # 2c) 進場：補滿可用名額，挑當日買進訊號、依排名取前幾名
         slots = max_positions - len(positions)
-        if slots <= 0:
+        if slots <= 0 or not market_up:
             continue
         candidates = []
         for sym, e in enriched.items():
@@ -137,11 +162,14 @@ def run_portfolio_backtest(
                 continue
             row = e.loc[d]
             if int(row["position"]) == 1:   # 買進訊號
-                candidates.append((sym, float(row["confidence"]),
+                mom = row.get("mom")
+                rank_val = (float(mom) if rank_by == "momentum" and mom == mom
+                            else float(row["confidence"]))
+                candidates.append((sym, rank_val,
                                    float(row["close"]), float(row["atr"])))
         candidates.sort(key=lambda x: x[1], reverse=True)
 
-        for sym, conf, price, atr in candidates[:slots]:
+        for sym, _rank, price, atr in candidates[:slots]:
             if price <= 0 or atr <= 0:
                 continue
             alloc = equity * position_pct

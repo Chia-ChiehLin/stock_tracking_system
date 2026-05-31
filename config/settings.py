@@ -23,6 +23,11 @@ USE_FULL_UNIVERSE = True         # True=從全市場（流動性過濾）自動�
 UNIVERSE_MIN_PRICE = 5.0         # 全市場篩選：最低股價
 UNIVERSE_MIN_DOLLAR_VOLUME = 30_000_000  # 全市場篩選：每日最低成交金額
 
+# 大盤趨勢過濾（避崩盤）：大盤跌破長期均線時，暫停所有新進場
+MARKET_REGIME_FILTER = True
+MARKET_SYMBOL = "SPY"            # 用來判斷大盤多空的指標
+MARKET_MA_DAYS = 200            # 大盤長期均線天數
+
 # 當沖預設使用的分鐘線粒度
 DEFAULT_TIMEFRAME = "5Min"
 

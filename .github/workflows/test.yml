@@ -1,0 +1,21 @@
+name: 單元測試
+
+# 每次 push 自動跑單元測試，確保核心邏輯沒被改壞。
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 安裝套件
+        run: pip install -r requirements.txt
+      - name: 跑測試
+        run: python -m pytest tests/ -q

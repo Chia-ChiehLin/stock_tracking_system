@@ -51,6 +51,20 @@ def _trend_exit_pass(dry_run: bool) -> None:
                 print(f"  {sym} 出場失敗：{exc}")
 
 
+def _market_is_up() -> bool:
+    """大盤趨勢過濾：大盤指標收盤是否站上長期均線（站上才允許新進場）。"""
+    if not settings.MARKET_REGIME_FILTER:
+        return True
+    try:
+        df = alpaca_client.get_bars(settings.MARKET_SYMBOL, "1Day", lookback_days=400)
+        if len(df) < settings.MARKET_MA_DAYS:
+            return True  # 資料不足就不擋
+        ma = df["close"].rolling(settings.MARKET_MA_DAYS).mean().iloc[-1]
+        return float(df["close"].iloc[-1]) >= float(ma)
+    except Exception:
+        return True
+
+
 def _candidate_symbols() -> list[str]:
     """要掃描的股票池。"""
     if not settings.USE_FULL_UNIVERSE:
@@ -81,6 +95,12 @@ def run(dry_run: bool = False) -> None:
 
     # 先做趨勢出場（賣掉趨勢轉弱的持倉，騰出名額）
     _trend_exit_pass(dry_run)
+
+    # 大盤趨勢過濾：大盤轉空就只出場、不進場（避開崩盤）
+    if not _market_is_up():
+        print("📉 大盤跌破長期均線，暫停所有新進場（只保留出場）。")
+        telegram.send_message("📉 大盤轉空（跌破200日均線），系統暫停新進場以避險。")
+        return
 
     held = alpaca_trader.held_symbols()
     pending = alpaca_trader.open_order_symbols()
