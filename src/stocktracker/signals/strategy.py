@@ -122,9 +122,11 @@ def signal_series(df: pd.DataFrame, params: dict) -> pd.DataFrame:
     position: 1=做多, -1=做空, 0=空手。用於回測。
     """
     enriched = technical.add_indicators(df, params).dropna().copy()
-    positions = []
+    positions, confidences = [], []
     for _, row in enriched.iterrows():
         sig = evaluate_row(row, params)
         positions.append({"BUY": 1, "SELL": -1, "HOLD": 0}[sig.action])
+        confidences.append(sig.confidence)
     enriched["position"] = positions
+    enriched["confidence"] = confidences
     return enriched
