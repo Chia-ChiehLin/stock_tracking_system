@@ -1,11 +1,12 @@
-"""自動交易（模擬倉）：依訊號自動在 Alpaca paper 帳戶下單。
+"""自動交易（模擬倉）：從全市場自動選股，依訊號強度排名後下單。
 
 規則（只做多、保守）：
-- 掃描關注清單，對每檔用 1 小時線算最新訊號。
-- 訊號為「買進」且「目前沒持有、也沒掛單」、且未超過最大持倉數 → 市價買進 + 括號單
-  （同時掛好停利、停損，由券商自動出場）。
-- 其他情況（賣出/觀望、或已持有）→ 不動作，交給括號單自動管理出場。
-- 每筆實際下單都推播 Telegram 通知。
+- 取得股票池（預設：全市場流動性過濾後 ~數百檔；可改回只看關注清單）。
+- 批次抓 1 小時線，對每檔算最新訊號，收集「買進」訊號。
+- 依信心分數由高到低排名，挑最強的幾檔（補滿可用持倉名額）。
+- 只在「沒持有、沒掛單、未達最大持倉數」時進場，市價買進 + 括號單
+  （自動掛停利/停損，由券商管理出場）。
+- 每筆實際下單都推播 Telegram。
 
 用法：
     python auto_trade.py            # 跑一次
@@ -16,10 +17,26 @@ from __future__ import annotations
 import argparse
 
 from config import settings
-from src.stocktracker.data import alpaca_client
+from src.stocktracker.data import alpaca_client, universe
 from src.stocktracker.notify import telegram
 from src.stocktracker.signals import strategy
 from src.stocktracker.trade import alpaca_trader
+
+
+def _candidate_symbols() -> list[str]:
+    """要掃描的股票池。"""
+    if not settings.USE_FULL_UNIVERSE:
+        return settings.WATCHLIST
+    try:
+        uni = universe.liquid_universe(
+            min_price=settings.UNIVERSE_MIN_PRICE,
+            min_dollar_volume=settings.UNIVERSE_MIN_DOLLAR_VOLUME,
+        )
+        if uni:
+            return uni
+    except Exception as exc:
+        print(f"建立股票池失敗，改用關注清單：{exc}")
+    return settings.WATCHLIST
 
 
 def run(dry_run: bool = False) -> None:
@@ -32,60 +49,69 @@ def run(dry_run: bool = False) -> None:
     print(f"模擬倉淨值 ${acc.equity:,.2f}｜可買力 ${acc.buying_power:,.2f}")
     if acc.equity <= 0:
         msg = "⚠️ 模擬倉資金為 $0，無法下單。請先到 Alpaca 重置帳戶資金。"
-        print(msg)
-        telegram.send_message(msg)
-        return
+        print(msg); telegram.send_message(msg); return
 
     held = alpaca_trader.held_symbols()
     pending = alpaca_trader.open_order_symbols()
-    busy = held | pending          # 已持有或掛單中的標的
+    busy = held | pending
     open_slots = settings.MAX_OPEN_POSITIONS - len(held)
+    print(f"目前持有 {len(held)} 檔、掛單 {len(pending)} 檔、可用名額 {open_slots}")
 
-    for symbol in settings.WATCHLIST:
+    symbols = _candidate_symbols()
+    print(f"掃描股票池：{len(symbols)} 檔")
+
+    # 批次抓 1 小時線，逐檔算訊號，收集買進候選
+    bars = alpaca_client.get_bars_multi(
+        symbols, timeframe=settings.AUTO_TRADE_TIMEFRAME, lookback_days=60)
+    candidates = []
+    for sym, df in bars.items():
+        if df.empty:
+            continue
         try:
-            df = alpaca_client.get_bars(
-                symbol, settings.AUTO_TRADE_TIMEFRAME, lookback_days=60)
-            if df.empty:
-                print(f"{symbol}: 無資料"); continue
-
             sig = strategy.latest_signal(df, settings.STRATEGY_PARAMS)
-            print(f"{symbol}: {sig.action} (信心 {sig.confidence}) @ {sig.price:.2f}")
+        except Exception:
+            continue
+        if sig.action == "BUY" and sym not in busy:
+            candidates.append((sym, sig))
 
-            if sig.action != "BUY":
-                continue
-            if symbol in busy:
-                print(f"  ↳ 已持有或掛單中，略過"); continue
-            if open_slots <= 0:
-                print(f"  ↳ 已達最大持倉數 {settings.MAX_OPEN_POSITIONS}，略過"); continue
+    # 依信心分數排名，最強的優先
+    candidates.sort(key=lambda x: x[1].confidence, reverse=True)
+    print(f"買進候選 {len(candidates)} 檔，將挑前 {max(open_slots,0)} 檔下單")
 
-            qty = alpaca_trader.calc_qty(acc.equity, sig.price, settings.POSITION_PCT)
-            if qty < 1:
-                print(f"  ↳ 資金不足買 1 股，略過"); continue
+    if open_slots <= 0:
+        print("已達最大持倉數，這輪不進場。")
+        return
 
-            if dry_run:
-                print(f"  ↳ [試算] 會買 {qty} 股，停損 {sig.stop_loss:.2f}、"
-                      f"停利 {sig.take_profit:.2f}")
-                continue
+    placed = 0
+    for sym, sig in candidates:
+        if placed >= open_slots:
+            break
+        qty = alpaca_trader.calc_qty(acc.equity, sig.price, settings.POSITION_PCT)
+        if qty < 1:
+            continue
 
-            try:
-                alpaca_trader.open_long_bracket(
-                    symbol, qty, sig.stop_loss, sig.take_profit)
-            except Exception as order_exc:
-                # 下單失敗也要讓使用者知道（例如市場休市、資金不足）
-                err = (f"⚠️ {symbol} 自動下單失敗：{order_exc}")
-                print(f"  ↳ {err}")
-                telegram.send_message(err)
-                continue
+        if dry_run:
+            print(f"  [試算] 買 {sym} {qty} 股 @ {sig.price:.2f}（信心 {sig.confidence}）"
+                  f" 停損 {sig.stop_loss:.2f} 停利 {sig.take_profit:.2f}")
+            placed += 1
+            continue
 
-            open_slots -= 1
-            busy.add(symbol)
-            note = (f"🤖 自動買進 <b>{symbol}</b> {qty} 股 @ ~${sig.price:.2f}\n"
-                    f"停損 ${sig.stop_loss:.2f}｜停利 ${sig.take_profit:.2f}\n"
-                    f"（模擬倉・信心 {sig.confidence}/100）")
-            print(f"  ↳ 已下單：{qty} 股")
-            telegram.send_message(note)
-        except Exception as exc:
-            print(f"{symbol}: 處理錯誤 - {exc}")
+        try:
+            alpaca_trader.open_long_bracket(sym, qty, sig.stop_loss, sig.take_profit)
+        except Exception as order_exc:
+            err = f"⚠️ {sym} 自動下單失敗：{order_exc}"
+            print(f"  {err}"); telegram.send_message(err)
+            continue
+
+        placed += 1
+        note = (f"🤖 自動買進 <b>{sym}</b> {qty} 股 @ ~${sig.price:.2f}\n"
+                f"停損 ${sig.stop_loss:.2f}｜停利 ${sig.take_profit:.2f}\n"
+                f"（模擬倉・信心 {sig.confidence}/100）")
+        print(f"  已下單 {sym}：{qty} 股")
+        telegram.send_message(note)
+
+    if placed == 0:
+        print("這輪沒有符合條件的買進。")
 
 
 def main() -> None:

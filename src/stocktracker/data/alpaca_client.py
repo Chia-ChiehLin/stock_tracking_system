@@ -76,6 +76,53 @@ def get_bars(
     return df
 
 
+def get_bars_multi(
+    symbols: list[str],
+    timeframe: str = "1Hour",
+    lookback_days: int = 60,
+    batch_size: int = 200,
+) -> dict[str, pd.DataFrame]:
+    """一次抓多檔的 K 棒，回傳 {symbol: DataFrame}。
+
+    用分批請求避免單一請求過大；缺資料的標的不會出現在回傳的 dict 裡。
+    """
+    if timeframe not in _TIMEFRAME_MAP:
+        raise ValueError(f"不支援的 timeframe: {timeframe}")
+
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=lookback_days)
+    client = _client()
+    out: dict[str, pd.DataFrame] = {}
+
+    for i in range(0, len(symbols), batch_size):
+        chunk = symbols[i:i + batch_size]
+        request = StockBarsRequest(
+            symbol_or_symbols=chunk,
+            timeframe=_TIMEFRAME_MAP[timeframe],
+            start=start,
+            end=end,
+            feed=DataFeed.IEX,
+        )
+        try:
+            df = client.get_stock_bars(request).df
+        except Exception:
+            continue
+        if df.empty:
+            continue
+        # MultiIndex (symbol, timestamp) → 拆成各標的
+        for sym in chunk:
+            try:
+                sub = df.xs(sym, level="symbol")
+            except (KeyError, Exception):
+                continue
+            if sub.empty:
+                continue
+            sub = sub[["open", "high", "low", "close", "volume"]].copy()
+            sub.index = pd.to_datetime(sub.index)
+            out[sym] = sub
+    return out
+
+
 if __name__ == "__main__":
     # 簡單煙霧測試：python -m src.stocktracker.data.alpaca_client
     out = get_bars("AAPL", "5Min", lookback_days=2)

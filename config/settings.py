@@ -18,6 +18,11 @@ AUTO_TRADE_TIMEFRAME = "1Hour"   # 自動交易依據的 K 棒粒度（用驗證
 POSITION_PCT = 0.10              # 每檔投入帳戶淨值的比例（0.10 = 10%）
 MAX_OPEN_POSITIONS = 5          # 同時最多持有幾檔，控制曝險
 
+# 自動選股範圍
+USE_FULL_UNIVERSE = True         # True=從全市場（流動性過濾）自動選股；False=只看 WATCHLIST
+UNIVERSE_MIN_PRICE = 5.0         # 全市場篩選：最低股價
+UNIVERSE_MIN_DOLLAR_VOLUME = 30_000_000  # 全市場篩選：每日最低成交金額
+
 # 當沖預設使用的分鐘線粒度
 DEFAULT_TIMEFRAME = "5Min"
 
