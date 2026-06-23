@@ -5,6 +5,23 @@ import pandas as pd
 from src.stocktracker.indicators import technical
 from src.stocktracker.signals import strategy
 from src.stocktracker.backtest import engine, portfolio
+from src.stocktracker.data import universe
+
+
+# ---------- 槓桿/反向 ETF 過濾（純函式，不連網）----------
+def test_leveraged_name_filter():
+    assert universe._is_leveraged_or_inverse("ProShares UltraPro Short QQQ")
+    assert universe._is_leveraged_or_inverse("Direxion Daily S&P 500 Bear 1X ETF")
+    assert universe._is_leveraged_or_inverse("Direxion Daily Semiconductor Bull 3X ETF")
+    assert not universe._is_leveraged_or_inverse("Apple Inc. Common Stock")
+    assert not universe._is_leveraged_or_inverse("VanEck Gold Miners ETF")
+
+
+def test_blocked_symbols():
+    for s in ["SOXL", "SQQQ", "TQQQ", "SPDN", "NVD"]:
+        assert universe.is_blocked(s), f"{s} 應被封鎖"
+    for s in ["AAPL", "NVDA", "GDX", "SPY"]:
+        assert not universe.is_blocked(s), f"{s} 不該被封鎖"
 
 
 # ---------- 指標 ----------

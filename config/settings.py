@@ -28,6 +28,14 @@ MARKET_REGIME_FILTER = True
 MARKET_SYMBOL = "SPY"            # 用來判斷大盤多空的指標
 MARKET_MA_DAYS = 200            # 大盤長期均線天數
 
+# 選股與風控
+RANK_BY_MOMENTUM = True          # True=用動量排名挑股（回測勝率較高）；False=用信心分數
+MOMENTUM_WINDOW = 20             # 動量回看根數
+MAX_CORRELATION = 0.85           # 與既有持倉相關性超過此值就不買（避免集中同類股）
+EXIT_COOLDOWN_HOURS = 24         # 剛賣出的標的冷卻期（小時），避免追高買回
+SPLIT_GUARD_PCT = 0.50           # 單檔相對均價變動超過此比例視為拆股/資料異常，暫停自動賣出
+REARM_STOPS = True               # 每輪為沒有保護的持倉自動補掛 GTC 停損
+
 # 當沖預設使用的分鐘線粒度
 DEFAULT_TIMEFRAME = "5Min"
 

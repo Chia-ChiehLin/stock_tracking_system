@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
-from alpaca.data.enums import DataFeed
+from alpaca.data.enums import Adjustment, DataFeed
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
@@ -60,6 +60,7 @@ def get_bars(
         start=start,
         end=end,
         feed=DataFeed.IEX,  # 免費帳戶用 IEX feed（SIP 需付費訂閱）
+        adjustment=Adjustment.ALL,  # 分割/股息還原，避免拆股當成崩盤
     )
     bars = _client().get_stock_bars(request)
     df = bars.df
@@ -102,6 +103,7 @@ def get_bars_multi(
             start=start,
             end=end,
             feed=DataFeed.IEX,
+            adjustment=Adjustment.ALL,  # 分割/股息還原
         )
         try:
             df = client.get_stock_bars(request).df

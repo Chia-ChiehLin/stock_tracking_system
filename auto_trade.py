@@ -1,12 +1,14 @@
-"""自動交易（模擬倉）：從全市場自動選股，依訊號強度排名後下單。
+"""自動交易（模擬倉）：從全市場自動選股，依動量排名、做風控後下單。
 
 規則（只做多、保守）：
-- 取得股票池（預設：全市場流動性過濾後 ~數百檔；可改回只看關注清單）。
-- 批次抓 1 小時線，對每檔算最新訊號，收集「買進」訊號。
-- 依信心分數由高到低排名，挑最強的幾檔（補滿可用持倉名額）。
-- 只在「沒持有、沒掛單、未達最大持倉數」時進場，市價買進 + 括號單
-  （自動掛停利/停損，由券商管理出場）。
-- 每筆實際下單都推播 Telegram。
+- 只在「美股交易時段」動作（避免盤後送無效市價單空轉）。
+- 出場：持倉跌破長期均線就賣（讓獲利的單之前能一直抱）；但若單檔相對均價暴變
+  （疑似拆股/資料異常）則暫停自動賣出並告警。
+- 補保護：為任何沒有在掛停損的持倉，自動補掛 GTC 停損（GTC 不會當日過期）。
+- 大盤過濾：大盤跌破長期均線就只出場、不進場（避崩盤）。
+- 進場：依動量排名挑強勢股，並做「同類股相關性上限 + 剛出場冷卻期 + 槓桿ETF封鎖」
+  三道風控，補滿可用名額，市價買進 + GTC 初始停損。
+- 每筆實際下單/出場都推播 Telegram。
 
 用法：
     python auto_trade.py            # 跑一次
@@ -16,6 +18,8 @@ from __future__ import annotations
 
 import argparse
 
+import pandas as pd
+
 from config import settings
 from src.stocktracker.data import alpaca_client, universe
 from src.stocktracker.indicators import technical
@@ -23,42 +27,77 @@ from src.stocktracker.notify import telegram
 from src.stocktracker.signals import strategy
 from src.stocktracker.trade import alpaca_trader
 
+P = settings.STRATEGY_PARAMS
 
-def _trend_exit_pass(dry_run: bool) -> None:
-    """對現有持倉做趨勢出場：價格跌破長期均線就賣出（讓獲利的單之前能一直抱）。"""
+
+def _returns(df: pd.DataFrame, n: int = 120) -> pd.Series:
+    return df["close"].pct_change().dropna().tail(n)
+
+
+def _trend_exit_and_rearm(dry_run: bool) -> None:
+    """出場 + 補掛停損：跌破趨勢就賣；裸奔部位補掛 GTC 停損；拆股暴變則暫停賣出告警。"""
     positions = alpaca_trader.list_positions()
     if not positions:
         return
-    symbols = [s for s, _ in positions]
-    bars = alpaca_client.get_bars_multi(
-        symbols, timeframe=settings.AUTO_TRADE_TIMEFRAME, lookback_days=60)
-    for sym, qty in positions:
-        df = bars.get(sym)
+    symbols = [p.symbol for p in positions]
+    bars = alpaca_client.get_bars_multi(symbols, settings.AUTO_TRADE_TIMEFRAME, 60)
+    protected = alpaca_trader.symbols_with_open_sell()
+
+    for pos in positions:
+        df = bars.get(pos.symbol)
         if df is None or df.empty:
             continue
-        trend = technical.ema(df["close"], settings.STRATEGY_PARAMS.get("trend_ema", 50))
         last_close = float(df["close"].iloc[-1])
-        last_trend = float(trend.iloc[-1])
-        if last_close < last_trend:   # 趨勢轉弱 → 出場
+        atr = float(technical.atr(df, P["atr_period"]).iloc[-1])
+        trend = float(technical.ema(df["close"], P.get("trend_ema", 50)).iloc[-1])
+
+        # 拆股/資料異常防呆：相對均價單步暴變 → 不自動賣，告警人工確認
+        if pos.avg_entry_price > 0:
+            move = abs(last_close / pos.avg_entry_price - 1)
+            if move > settings.SPLIT_GUARD_PCT:
+                msg = (f"⚠️ {pos.symbol} 價格相對均價變動 {move*100:.0f}%（疑似拆股/資料異常），"
+                       f"已暫停自動賣出，請人工確認。")
+                print(f"  {msg}")
+                if not dry_run:
+                    telegram.send_message(msg)
+                continue
+
+        # 趨勢轉弱 → 全部出場
+        if last_close < trend:
             if dry_run:
-                print(f"  [試算] 趨勢轉弱，賣出 {sym} {qty} 股 @ {last_close:.2f}")
+                print(f"  [試算] 趨勢轉弱，賣出 {pos.symbol}（未實現 {pos.unrealized_pl_pct:+.1f}%）")
                 continue
             try:
-                alpaca_trader.close_position(sym)
+                alpaca_trader.close_position(pos.symbol)
                 telegram.send_message(
-                    f"📉 趨勢轉弱，自動賣出 <b>{sym}</b> {qty} 股 @ ~${last_close:.2f}")
+                    f"📉 趨勢轉弱，自動賣出 <b>{pos.symbol}</b>"
+                    f"（未實現 {pos.unrealized_pl_pct:+.1f}%）")
             except Exception as exc:
-                print(f"  {sym} 出場失敗：{exc}")
+                print(f"  {pos.symbol} 出場失敗：{exc}")
+            continue
+
+        # 還在趨勢上但沒有保護 → 補掛 GTC 停損
+        if settings.REARM_STOPS and pos.symbol not in protected and atr > 0:
+            stop = round(last_close - P["atr_stop_mult"] * atr, 2)
+            if stop > 0 and stop < last_close:
+                if dry_run:
+                    print(f"  [試算] {pos.symbol} 無保護，補掛停損 @ {stop}")
+                    continue
+                try:
+                    alpaca_trader.place_stop_sell(pos.symbol, pos.qty, stop)
+                    print(f"  {pos.symbol} 已補掛 GTC 停損 @ {stop}")
+                except Exception as exc:
+                    print(f"  {pos.symbol} 補掛停損失敗：{exc}")
 
 
 def _market_is_up() -> bool:
-    """大盤趨勢過濾：大盤指標收盤是否站上長期均線（站上才允許新進場）。"""
+    """大盤趨勢過濾：大盤收盤是否站上長期均線。"""
     if not settings.MARKET_REGIME_FILTER:
         return True
     try:
         df = alpaca_client.get_bars(settings.MARKET_SYMBOL, "1Day", lookback_days=400)
         if len(df) < settings.MARKET_MA_DAYS:
-            return True  # 資料不足就不擋
+            return True
         ma = df["close"].rolling(settings.MARKET_MA_DAYS).mean().iloc[-1]
         return float(df["close"].iloc[-1]) >= float(ma)
     except Exception:
@@ -66,14 +105,12 @@ def _market_is_up() -> bool:
 
 
 def _candidate_symbols() -> list[str]:
-    """要掃描的股票池。"""
     if not settings.USE_FULL_UNIVERSE:
         return settings.WATCHLIST
     try:
         uni = universe.liquid_universe(
             min_price=settings.UNIVERSE_MIN_PRICE,
-            min_dollar_volume=settings.UNIVERSE_MIN_DOLLAR_VOLUME,
-        )
+            min_dollar_volume=settings.UNIVERSE_MIN_DOLLAR_VOLUME)
         if uni:
             return uni
     except Exception as exc:
@@ -90,61 +127,92 @@ def run(dry_run: bool = False) -> None:
 
     print(f"模擬倉淨值 ${acc.equity:,.2f}｜可買力 ${acc.buying_power:,.2f}")
     if acc.equity <= 0:
-        msg = "⚠️ 模擬倉資金為 $0，無法下單。請先到 Alpaca 重置帳戶資金。"
-        print(msg); telegram.send_message(msg); return
-
-    # 先做趨勢出場（賣掉趨勢轉弱的持倉，騰出名額）
-    _trend_exit_pass(dry_run)
-
-    # 大盤趨勢過濾：大盤轉空就只出場、不進場（避開崩盤）
-    if not _market_is_up():
-        print("📉 大盤跌破長期均線，暫停所有新進場（只保留出場）。")
-        telegram.send_message("📉 大盤轉空（跌破200日均線），系統暫停新進場以避險。")
+        telegram.send_message("⚠️ 模擬倉資金為 $0，無法下單，請先重置帳戶資金。")
         return
 
-    held = alpaca_trader.held_symbols()
+    # 只在交易時段動作（避免盤後無效市價單反覆重試）
+    if not dry_run and not alpaca_trader.market_is_open():
+        print("🕒 目前非交易時段，略過交易動作。")
+        return
+
+    # 出場 + 補掛裸奔部位的停損
+    _trend_exit_and_rearm(dry_run)
+
+    # 大盤轉空 → 只出場、不進場
+    if not _market_is_up():
+        print("📉 大盤跌破長期均線，暫停所有新進場。")
+        telegram.send_message("📉 大盤轉空（跌破200日均線），暫停新進場以避險。")
+        return
+
+    held_positions = alpaca_trader.list_positions()
+    held = {p.symbol for p in held_positions}
     pending = alpaca_trader.open_order_symbols()
-    busy = held | pending
+    cooldown = alpaca_trader.recently_sold_symbols(settings.EXIT_COOLDOWN_HOURS)
+    busy = held | pending | cooldown
     open_slots = settings.MAX_OPEN_POSITIONS - len(held)
-    print(f"目前持有 {len(held)} 檔、掛單 {len(pending)} 檔、可用名額 {open_slots}")
-
-    symbols = _candidate_symbols()
-    print(f"掃描股票池：{len(symbols)} 檔")
-
-    # 批次抓 1 小時線，逐檔算訊號，收集買進候選
-    bars = alpaca_client.get_bars_multi(
-        symbols, timeframe=settings.AUTO_TRADE_TIMEFRAME, lookback_days=60)
-    candidates = []
-    for sym, df in bars.items():
-        if df.empty:
-            continue
-        try:
-            sig = strategy.latest_signal(df, settings.STRATEGY_PARAMS)
-        except Exception:
-            continue
-        if sig.action == "BUY" and sym not in busy:
-            candidates.append((sym, sig))
-
-    # 依信心分數排名，最強的優先
-    candidates.sort(key=lambda x: x[1].confidence, reverse=True)
-    print(f"買進候選 {len(candidates)} 檔，將挑前 {max(open_slots,0)} 檔下單")
-
+    print(f"持有 {len(held)}｜掛單 {len(pending)}｜冷卻 {len(cooldown)}｜可用名額 {open_slots}")
     if open_slots <= 0:
         print("已達最大持倉數，這輪不進場。")
         return
 
+    symbols = _candidate_symbols()
+    print(f"掃描股票池：{len(symbols)} 檔")
+    bars = alpaca_client.get_bars_multi(symbols, settings.AUTO_TRADE_TIMEFRAME, 60)
+
+    # 收集買進候選（排除 busy 與槓桿ETF），算動量分數
+    candidates = []
+    for sym, df in bars.items():
+        if df.empty or sym in busy or universe.is_blocked(sym):
+            continue
+        try:
+            sig = strategy.latest_signal(df, P)
+        except Exception:
+            continue
+        if sig.action != "BUY":
+            continue
+        mom = df["close"].pct_change(settings.MOMENTUM_WINDOW).iloc[-1]
+        score = float(mom) if (settings.RANK_BY_MOMENTUM and mom == mom) else sig.confidence
+        candidates.append({"sym": sym, "sig": sig, "score": score,
+                           "ret": _returns(df)})
+
+    # 依分數（動量）由高到低；次要鍵用代號確保穩定、與回測一致
+    candidates.sort(key=lambda c: (c["score"], c["sym"]), reverse=True)
+    print(f"買進候選 {len(candidates)} 檔，挑前 {open_slots} 檔（含相關性風控）")
+
+    # 既有持倉的報酬序列（給相關性風控用）
+    book_rets = []
+    if held:
+        hb = alpaca_client.get_bars_multi(list(held), settings.AUTO_TRADE_TIMEFRAME, 60)
+        book_rets = [_returns(d) for d in hb.values() if not d.empty]
+
     placed = 0
-    for sym, sig in candidates:
+    for c in candidates:
         if placed >= open_slots:
             break
+        sym, sig = c["sym"], c["sig"]
+
+        # 相關性風控：與書中任一標的相關性過高就跳過（避免集中同類股）
+        too_correlated = False
+        for br in book_rets:
+            aligned = pd.concat([c["ret"], br], axis=1).dropna()
+            if len(aligned) > 20:
+                corr = aligned.iloc[:, 0].corr(aligned.iloc[:, 1])
+                if corr is not None and corr > settings.MAX_CORRELATION:
+                    too_correlated = True
+                    break
+        if too_correlated:
+            print(f"  跳過 {sym}：與既有持倉相關性過高")
+            continue
+
         qty = alpaca_trader.calc_qty(acc.equity, sig.price, settings.POSITION_PCT)
         if qty < 1:
             continue
 
         if dry_run:
-            print(f"  [試算] 買 {sym} {qty} 股 @ {sig.price:.2f}（信心 {sig.confidence}）"
-                  f" 初始停損 {sig.stop_loss:.2f}（讓獲利跑）")
+            print(f"  [試算] 買 {sym} {qty} 股 @ {sig.price:.2f}"
+                  f"（動量分 {c['score']:.3f}）停損 {sig.stop_loss:.2f}")
             placed += 1
+            book_rets.append(c["ret"])
             continue
 
         try:
@@ -155,11 +223,11 @@ def run(dry_run: bool = False) -> None:
             continue
 
         placed += 1
-        note = (f"🤖 自動買進 <b>{sym}</b> {qty} 股 @ ~${sig.price:.2f}\n"
-                f"初始停損 ${sig.stop_loss:.2f}（之後讓獲利跑，跌破趨勢才賣）\n"
-                f"（模擬倉・信心 {sig.confidence}/100）")
+        book_rets.append(c["ret"])
+        telegram.send_message(
+            f"🤖 自動買進 <b>{sym}</b> {qty} 股 @ ~${sig.price:.2f}\n"
+            f"初始停損 ${sig.stop_loss:.2f}（GTC，讓獲利跑、跌破趨勢才賣）")
         print(f"  已下單 {sym}：{qty} 股")
-        telegram.send_message(note)
 
     if placed == 0:
         print("這輪沒有符合條件的買進。")

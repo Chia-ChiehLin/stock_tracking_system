@@ -33,6 +33,20 @@ def _is_leveraged_or_inverse(name: str | None) -> bool:
     low = name.lower()
     return any(k in low for k in _LEVERAGED_KEYWORDS)
 
+
+# 常見槓桿/反向 ETF 代號黑名單（即使名稱關鍵字漏掉，下單前也擋一道）
+BLOCKED_SYMBOLS = {
+    "SOXL", "SOXS", "SQQQ", "TQQQ", "SPXL", "SPXS", "SPDN", "UPRO", "SDOW",
+    "UDOW", "TNA", "TZA", "LABU", "LABD", "FAS", "FAZ", "YINN", "YANG",
+    "NVD", "NVDU", "NVDL", "TSLL", "TSLQ", "TSLS", "AMDL", "MSFU",
+    "BOIL", "KOLD", "UVXY", "SVXY", "TMF", "TMV", "DRN", "DRV", "ERX", "ERY",
+}
+
+
+def is_blocked(symbol: str) -> bool:
+    """下單前最後一道防線：擋掉已知槓桿/反向 ETF。"""
+    return symbol.upper() in BLOCKED_SYMBOLS
+
 # 流動性門檻
 MIN_PRICE = 5.0                 # 股價至少 $5（避開水餃股）
 MIN_DOLLAR_VOLUME = 30_000_000  # 每日成交金額至少 $30M（夠你進出不影響價格）
