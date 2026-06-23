@@ -34,8 +34,11 @@ def _returns(df: pd.DataFrame, n: int = 120) -> pd.Series:
     return df["close"].pct_change().dropna().tail(n)
 
 
-def _trend_exit_and_rearm(dry_run: bool) -> None:
-    """出場 + 補掛停損：跌破趨勢就賣；裸奔部位補掛 GTC 停損；拆股暴變則暫停賣出告警。"""
+def _trend_exit_and_rearm(dry_run: bool, can_sell: bool = True) -> None:
+    """出場 + 補掛停損。
+
+    can_sell=False（盤後）時：只補掛 GTC 停損（可隨時掛），不送出市價賣單。
+    """
     positions = alpaca_trader.list_positions()
     if not positions:
         return
@@ -62,8 +65,8 @@ def _trend_exit_and_rearm(dry_run: bool) -> None:
                     telegram.send_message(msg)
                 continue
 
-        # 趨勢轉弱 → 全部出場
-        if last_close < trend:
+        # 趨勢轉弱 → 全部出場（盤後不送市價賣單，留待開盤；但仍會補掛停損保護）
+        if last_close < trend and can_sell:
             if dry_run:
                 print(f"  [試算] 趨勢轉弱，賣出 {pos.symbol}（未實現 {pos.unrealized_pl_pct:+.1f}%）")
                 continue
@@ -130,13 +133,15 @@ def run(dry_run: bool = False) -> None:
         telegram.send_message("⚠️ 模擬倉資金為 $0，無法下單，請先重置帳戶資金。")
         return
 
-    # 只在交易時段動作（避免盤後無效市價單反覆重試）
-    if not dry_run and not alpaca_trader.market_is_open():
-        print("🕒 目前非交易時段，略過交易動作。")
-        return
+    market_open = dry_run or alpaca_trader.market_is_open()
 
-    # 出場 + 補掛裸奔部位的停損
-    _trend_exit_and_rearm(dry_run)
+    # 出場 + 補掛裸奔部位的停損（停損 GTC 盤後也可掛，先保護裸奔部位）
+    _trend_exit_and_rearm(dry_run, can_sell=market_open)
+
+    # 盤後：已補掛停損，但不做買賣，留待開盤
+    if not market_open:
+        print("🕒 非交易時段：已補掛停損保護，買賣留待開盤。")
+        return
 
     # 大盤轉空 → 只出場、不進場
     if not _market_is_up():
