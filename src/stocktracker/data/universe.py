@@ -19,6 +19,20 @@ from . import alpaca_client
 # 主要交易所（排除 OTC 等流動性差的場外市場）
 _MAJOR_EXCHANGES = {"NYSE", "NASDAQ", "ARCA", "AMEX", "BATS"}
 
+# 槓桿型/反向型 ETF 的名稱關鍵字（這類會放大波動、長期耗損、且賭市場反向，
+# 自動交易絕不該碰，例如 SQQQ、SOXL、SPDN、TQQQ）
+_LEVERAGED_KEYWORDS = (
+    "ultrapro", "ultrashort", "ultra ", "leveraged", "inverse",
+    "bear", "bull", "2x", "3x", "1.5x", "-1x", "short",
+)
+
+
+def _is_leveraged_or_inverse(name: str | None) -> bool:
+    if not name:
+        return False
+    low = name.lower()
+    return any(k in low for k in _LEVERAGED_KEYWORDS)
+
 # 流動性門檻
 MIN_PRICE = 5.0                 # 股價至少 $5（避開水餃股）
 MIN_DOLLAR_VOLUME = 30_000_000  # 每日成交金額至少 $30M（夠你進出不影響價格）
@@ -39,6 +53,9 @@ def all_tradable_equities() -> list[str]:
             continue
         # 排除含特殊字元（權證、優先股等）的代號，留乾淨的普通股
         if not a.symbol.isalpha():
+            continue
+        # 排除槓桿型/反向型 ETF（賭反向、長期耗損，自動交易不該碰）
+        if _is_leveraged_or_inverse(getattr(a, "name", None)):
             continue
         out.append(a.symbol)
     return out
