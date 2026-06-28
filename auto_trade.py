@@ -30,6 +30,11 @@ from src.stocktracker.trade import alpaca_trader
 P = settings.STRATEGY_PARAMS
 
 
+def _lookback() -> int:
+    """日線決策需要較長歷史（EMA50/動量），分鐘線用 60 天即可。"""
+    return 250 if settings.AUTO_TRADE_TIMEFRAME in ("1Day", "1Hour") else 60
+
+
 def _returns(df: pd.DataFrame, n: int = 120) -> pd.Series:
     return df["close"].pct_change().dropna().tail(n)
 
@@ -43,7 +48,7 @@ def _trend_exit_and_rearm(dry_run: bool, can_sell: bool = True) -> None:
     if not positions:
         return
     symbols = [p.symbol for p in positions]
-    bars = alpaca_client.get_bars_multi(symbols, settings.AUTO_TRADE_TIMEFRAME, 60)
+    bars = alpaca_client.get_bars_multi(symbols, settings.AUTO_TRADE_TIMEFRAME, _lookback())
     protected = alpaca_trader.symbols_with_open_sell()
 
     for pos in positions:
@@ -143,18 +148,21 @@ def run(dry_run: bool = False) -> None:
         print("🕒 非交易時段：已補掛停損保護，買賣留待開盤。")
         return
 
-    # 大盤轉空 → 只出場、不進場
+    # 大盤趨勢過濾：轉空時「減半曝險」（而非完全停手），兼顧避險與機會成本
+    max_pos = settings.MAX_OPEN_POSITIONS
+    pos_pct = settings.POSITION_PCT
     if not _market_is_up():
-        print("📉 大盤跌破長期均線，暫停所有新進場。")
-        telegram.send_message("📉 大盤轉空（跌破200日均線），暫停新進場以避險。")
-        return
+        max_pos = max(1, int(max_pos * settings.REGIME_REDUCE_FACTOR))
+        pos_pct = pos_pct * settings.REGIME_REDUCE_FACTOR
+        print(f"📉 大盤轉空，曝險減半：最多 {max_pos} 檔、單檔 {pos_pct:.0%}。")
+        telegram.send_message("📉 大盤轉空（跌破200日均線），自動減半曝險避險。")
 
     held_positions = alpaca_trader.list_positions()
     held = {p.symbol for p in held_positions}
     pending = alpaca_trader.open_order_symbols()
     cooldown = alpaca_trader.recently_sold_symbols(settings.EXIT_COOLDOWN_HOURS)
     busy = held | pending | cooldown
-    open_slots = settings.MAX_OPEN_POSITIONS - len(held)
+    open_slots = max_pos - len(held)
     print(f"持有 {len(held)}｜掛單 {len(pending)}｜冷卻 {len(cooldown)}｜可用名額 {open_slots}")
     if open_slots <= 0:
         print("已達最大持倉數，這輪不進場。")
@@ -162,7 +170,7 @@ def run(dry_run: bool = False) -> None:
 
     symbols = _candidate_symbols()
     print(f"掃描股票池：{len(symbols)} 檔")
-    bars = alpaca_client.get_bars_multi(symbols, settings.AUTO_TRADE_TIMEFRAME, 60)
+    bars = alpaca_client.get_bars_multi(symbols, settings.AUTO_TRADE_TIMEFRAME, _lookback())
 
     # 收集買進候選（排除 busy 與槓桿ETF），算動量分數
     candidates = []
@@ -187,7 +195,7 @@ def run(dry_run: bool = False) -> None:
     # 既有持倉的報酬序列（給相關性風控用）
     book_rets = []
     if held:
-        hb = alpaca_client.get_bars_multi(list(held), settings.AUTO_TRADE_TIMEFRAME, 60)
+        hb = alpaca_client.get_bars_multi(list(held), settings.AUTO_TRADE_TIMEFRAME, _lookback())
         book_rets = [_returns(d) for d in hb.values() if not d.empty]
 
     placed = 0
@@ -209,7 +217,7 @@ def run(dry_run: bool = False) -> None:
             print(f"  跳過 {sym}：與既有持倉相關性過高")
             continue
 
-        qty = alpaca_trader.calc_qty(acc.equity, sig.price, settings.POSITION_PCT)
+        qty = alpaca_trader.calc_qty(acc.equity, sig.price, pos_pct)
         if qty < 1:
             continue
 

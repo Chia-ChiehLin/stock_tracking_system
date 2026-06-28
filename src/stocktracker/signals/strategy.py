@@ -46,13 +46,15 @@ def _row_votes(row: pd.Series, params: dict) -> tuple[int, int, list[str], list[
         bear += 1
         bear_r.append("💸 股價低於今天的平均成交價，賣方較積極")
 
-    # 3) RSI 區間（過熱/超賣）
-    if row["rsi"] < params["rsi_oversold"]:
-        bull += 1
-        bull_r.append("🔵 最近跌得多、可能偏便宜，有反彈機會")
-    elif row["rsi"] > params["rsi_overbought"]:
-        bear += 1
-        bear_r.append("🔴 最近漲得多、可能偏貴，有回檔風險")
+    # 3) RSI：預設只當「過熱否決」濾網，不再把超賣當買進投票
+    #    （回測證實「超賣買進」會挑到最差進場點，與順勢邏輯互相抵銷）
+    if params.get("rsi_mode", "filter") == "vote":
+        if row["rsi"] < params["rsi_oversold"]:
+            bull += 1
+            bull_r.append("🔵 最近跌得多、可能偏便宜，有反彈機會")
+        elif row["rsi"] > params["rsi_overbought"]:
+            bear += 1
+            bear_r.append("🔴 最近漲得多、可能偏貴，有回檔風險")
 
     # 4) MACD 柱狀體方向（漲跌力道）
     if row["macd_hist"] > 0:
@@ -98,6 +100,12 @@ def evaluate_row(row: pd.Series, params: dict) -> Signal:
         elif action == "SELL" and row["close"] > trend:
             action, conf = "HOLD", 40
             reasons = ["雖然短期偏空，但大方向還在往上，逆勢放空風險高，建議先觀望"]
+
+    # RSI 過熱否決：已經漲很多（RSI 過高）就不追買，避免買在噴出頂
+    if (params.get("rsi_mode", "filter") == "filter" and action == "BUY"
+            and row["rsi"] > params.get("rsi_overheat", 70)):
+        action, conf = "HOLD", 40
+        reasons = [f"訊號偏多，但 RSI={row['rsi']:.0f} 已過熱，避免追高，先觀望"]
 
     price = float(row["close"])
     atr = float(row.get("atr", 0.0))
