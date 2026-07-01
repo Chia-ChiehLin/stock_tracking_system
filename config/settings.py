@@ -34,7 +34,7 @@ REGIME_REDUCE_FACTOR = 0.5     # 大盤轉空時，持倉數與單檔比例各�
 # 選股與風控
 RANK_BY_MOMENTUM = True          # True=用動量排名挑股（回測勝率較高）；False=用信心分數
 MOMENTUM_WINDOW = 20             # 動量回看根數
-MAX_CORRELATION = 0.85           # 與既有持倉相關性超過此值就不買（避免集中同類股）
+MAX_CORRELATION = 0.70           # 與既有持倉相關性超過此值就不買（收緊以避免又集中在半導體）
 EXIT_COOLDOWN_HOURS = 24         # 剛賣出的標的冷卻期（小時），避免追高買回
 SPLIT_GUARD_PCT = 0.50           # 單檔相對均價變動超過此比例視為拆股/資料異常，暫停自動賣出
 REARM_STOPS = True               # 每輪為沒有保護的持倉自動補掛 GTC 停損
