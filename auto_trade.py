@@ -35,6 +35,18 @@ def _lookback() -> int:
     return 250 if settings.AUTO_TRADE_TIMEFRAME in ("1Day", "1Hour") else 60
 
 
+def _confirmed_trend_break(closes: pd.Series, trend_ema: pd.Series,
+                           confirm_days: int) -> bool:
+    """連續 confirm_days 天收盤都跌破長期均線，才視為趨勢真的走壞。
+
+    單日跌破常是雜訊（回測：加一天確認可少被洗出場、總報酬與夏普皆升）。
+    """
+    if len(closes) < confirm_days or len(trend_ema) < confirm_days:
+        return False
+    below = closes.tail(confirm_days).values < trend_ema.tail(confirm_days).values
+    return bool(below.all())
+
+
 def _returns(df: pd.DataFrame, n: int = 120) -> pd.Series:
     return df["close"].pct_change().dropna().tail(n)
 
@@ -57,7 +69,7 @@ def _trend_exit_and_rearm(dry_run: bool, can_sell: bool = True) -> None:
             continue
         last_close = float(df["close"].iloc[-1])
         atr = float(technical.atr(df, P["atr_period"]).iloc[-1])
-        trend = float(technical.ema(df["close"], P.get("trend_ema", 50)).iloc[-1])
+        trend_series = technical.ema(df["close"], P.get("trend_ema", 50))
 
         # 拆股/資料異常防呆：相對均價單步暴變 → 不自動賣，告警人工確認
         if pos.avg_entry_price > 0:
@@ -70,8 +82,10 @@ def _trend_exit_and_rearm(dry_run: bool, can_sell: bool = True) -> None:
                     telegram.send_message(msg)
                 continue
 
-        # 趨勢轉弱 → 全部出場（盤後不送市價賣單，留待開盤；但仍會補掛停損保護）
-        if last_close < trend and can_sell:
+        # 趨勢轉弱 → 出場（需連續 N 天收盤跌破均線確認，避免單日雜訊洗出場；
+        # 盤後不送市價賣單，留待開盤；但仍會補掛停損保護）
+        if can_sell and _confirmed_trend_break(
+                df["close"], trend_series, settings.EXIT_CONFIRM_DAYS):
             if dry_run:
                 print(f"  [試算] 趨勢轉弱，賣出 {pos.symbol}（未實現 {pos.unrealized_pl_pct:+.1f}%）")
                 continue
@@ -140,12 +154,26 @@ def run(dry_run: bool = False) -> None:
 
     market_open = dry_run or alpaca_trader.market_is_open()
 
+    # 決策時間窗：策略是日線邏輯，盤中的半根日 K 會亂跳（暫時跌破均線收盤又站回），
+    # 造成回測裡不存在的多餘換手。買賣決策集中在收盤前的窗口執行（日 K 接近完整）；
+    # 其餘班次只做「補掛停損」保護性維護。dry-run 不受限，方便隨時試算。
+    in_window = True
+    if settings.DECISION_WINDOW_MINUTES > 0 and not dry_run and market_open:
+        mtc = alpaca_trader.minutes_to_close()
+        in_window = mtc is not None and mtc <= settings.DECISION_WINDOW_MINUTES
+
     # 出場 + 補掛裸奔部位的停損（停損 GTC 盤後也可掛，先保護裸奔部位）
-    _trend_exit_and_rearm(dry_run, can_sell=market_open)
+    _trend_exit_and_rearm(dry_run, can_sell=market_open and in_window)
 
     # 盤後：已補掛停損，但不做買賣，留待開盤
     if not market_open:
         print("🕒 非交易時段：已補掛停損保護，買賣留待開盤。")
+        return
+
+    # 盤中非決策窗口：保護做完就收工（不掃全市場、不進出場，省 API 也少雜訊交易）
+    if not in_window:
+        print(f"🕒 盤中維護模式：僅補掛停損。買賣決策集中在收盤前 "
+              f"{settings.DECISION_WINDOW_MINUTES} 分鐘內的班次執行。")
         return
 
     # 大盤趨勢過濾：轉空時「減半曝險」（而非完全停手），兼顧避險與機會成本

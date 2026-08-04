@@ -7,3 +7,5 @@ venv/
 *.log
 data_cache/
 .claude/
+# 交接文件含帳號等半敏感資訊，repo 是公開的，不上 git
+專案現況交接.md

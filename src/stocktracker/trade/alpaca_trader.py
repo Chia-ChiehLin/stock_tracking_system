@@ -32,6 +32,21 @@ def market_is_open() -> bool:
         return True  # 查不到就不阻擋
 
 
+def minutes_to_close() -> "float | None":
+    """距離今天收盤還有幾分鐘。未開盤或查不到回傳 None。
+
+    用途：把買賣決策集中在「收盤前的決策窗口」執行，讓實盤用的日 K 棒
+    接近完整（策略是日線邏輯，盤中的半根 K 棒訊號會亂跳、徒增換手）。
+    """
+    try:
+        clock = _client().get_clock()
+        if not clock.is_open:
+            return None
+        return (clock.next_close - clock.timestamp).total_seconds() / 60.0
+    except Exception:
+        return None
+
+
 def _client() -> TradingClient:
     if not settings.ALPACA_API_KEY or not settings.ALPACA_SECRET_KEY:
         raise RuntimeError("缺少 Alpaca 金鑰，無法連線模擬倉。")
